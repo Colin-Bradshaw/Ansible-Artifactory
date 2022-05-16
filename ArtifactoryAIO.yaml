@@ -1,0 +1,39 @@
+  gather_facts: False
+
+  tasks:
+  - name: Enable Docker
+    shell: |
+      sudo amazon-linux-extras enable docker=latest -Y
+      sudo yum clean metadata
+      sudo yum install docker -y
+      sudo systemctl start docker
+      sudo usermod -a -G docker ec2-user
+  - name: prepare directories to be mounted
+    shell: |
+      sudo cd /
+      sudo mkdir -p $JFROG_OSS/artifactory/var/etc
+      zone: hitec.link
+      sudo mkdir -p $JFROG_CE/artifactory/var/etc
+
+      cd $JFROG_OSS/artifactory/var/etc
+      sudo touch ./system.yaml
+      sudo chown -R 1030:1030 $JFROG_OSS/artifactory/var
+      sudo chmod -R 777 $JFROG_OSS/artifactory/var
+
+      cd $JFROG_CE/artifactory/var/etc
+      sudo touch ./system.yaml
+      sudo chown -R 1030:1030 $JFROG_CE/artifactory/var
+      sudo chmod -R 777 $JFROG_CE/artifactory/var
+    environment:
+      JFROG_OSS: '/artifactoryOSS'
+      JFROG_CE: '/artifactoryCE'
+  - name: run containers
+    shell: |
+      docker run --name artifactory-ce -e http_proxy="" -e https_proxy="" -e HTTP_PROXY="" -e HTTPS_PROXY="" -v $JFROG_CE/artifactory/var/:/var/opt/jfrog/artifactory -d -p 8081:8081 -p 8082:8082 releases-docker.jfrog.io/jfrog/artifactory-cpp-ce:latest
+      docker run --name artifactory-oss -e http_proxy="" -e https_proxy="" -e HTTP_PROXY="" -e HTTPS_PROXY="" -v $JFROG_OSS/artifactory/var/:/var/opt/jfrog/artifactory -d -p 9081:8081 -p 9082:8082 releases-docker.jfrog.io/jfrog/artifactory-oss:latest
+  - name: Per-boot script to start docker / artifactory instances
+    shell: |
+      cd /home/ec2-user
+      sudo echo -e '#!/bin/bash\nsudo systemctl start docker\nsudo docker start artifactory-ce\nsudo docker start artifactory-oss' > AutostartDockerInstances.sh
+      sudo chmod u+x AutostartDockerInstances.sh
+      sudo cp AutostartDockerInstances.sh /var/lib/cloud/scripts/per-boot
